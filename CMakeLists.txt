@@ -1,0 +1,46 @@
+CMAKE_MINIMUM_REQUIRED(VERSION 3.8 FATAL_ERROR)
+
+PROJECT(
+    cregex
+    VERSION 0.0.1
+    LANGUAGES C
+)
+
+FILE(GLOB_RECURSE _libcre_SOURCES "libcre/*.c")
+FILE(GLOB_RECURSE _libcre_INCLUDES "include/*.h")
+
+ADD_LIBRARY(
+    libcre SHARED
+    ${_libcre_SOURCES}
+    ${_libcre_INCLUDES}
+)
+
+SET_TARGET_PROPERTIES(
+    libcre PROPERTIES
+    OUTPUT_NAME cre
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+)
+TARGET_INCLUDE_DIRECTORIES(
+    libcre
+    PUBLIC
+        "include/"
+)
+
+FILE(GLOB_RECURSE _cre_SOURCES "cre/*.c" "cre/*.h")
+
+ADD_EXECUTABLE(
+    cre 
+    ${_cre_SOURCES}
+)
+
+TARGET_LINK_LIBRARIES(
+    cre
+    PUBLIC
+        libcre
+)
+
+SET_TARGET_PROPERTIES(
+    cre PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+)
