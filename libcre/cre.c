@@ -94,16 +94,21 @@ cre_re_t * cre_compile(const char * regex) {
     re->root.list.parent = NULL;
 
     bool in_escape = false;
-    bool in_quantifier_min = false;
-    bool in_quantifier_max = false;
+    bool in_capture_group = false;
+    bool in_alternator = false;
+    bool in_quantifier = false;
 
     int capture_group_count = 0;
     cre_token_t ** capture_groups = NULL;
+
+    char strnum[32] = { '\0' };
 
     cre_token_t * parent = &(re->root);
     cre_token_t * token = NULL;
     for (int i = 0; i < len; ++i) {
         char c = regex[i];
+        char nc = (i < len - 1 ? regex[i + 1] : '\0');
+        char nnc = (i < len - 2 ? regex[i + 2] : '\0');
 
         if (in_escape) {
             switch (c) {
@@ -151,6 +156,30 @@ cre_re_t * cre_compile(const char * regex) {
             continue;
         }
 
+        if (in_alternator) {
+            if (nc == '-') {
+                if ((c >= 'a' && c <= 'z' && nnc >= 'a' && nnc <= 'z') ||
+                    (c >= 'A' && c <= 'Z' && nnc >= 'A' && nnc <= 'Z') ||
+                    (c >= '0' && c <= '9' && nnc >= '0' && nnc <= '9')) {
+                    token = cre_add_token(parent);
+                    token->type = CRE_TOKEN_RANGE;
+                    token->range.min = c;
+                    token->range.max = nnc;
+
+                    i += 2;
+                    continue;
+                }
+            }
+        }
+
+        if (in_quantifier) {
+            if (c == '}') {
+                in_quantifier = false;
+            }
+
+            continue;
+        }
+
         switch (c) {
         case '\\':
             in_escape = true;
@@ -161,7 +190,20 @@ cre_re_t * cre_compile(const char * regex) {
             token->quantifier.min = 1;
             token->quantifier.max = -1;
             break;
+        case '?':
+            token = cre_add_token(parent);
+            token->type = CRE_TOKEN_QUANTIFIER;
+            token->quantifier.min = 0;
+            token->quantifier.max = 1;
+            break;
+        case '*':
+            token = cre_add_token(parent);
+            token->type = CRE_TOKEN_QUANTIFIER;
+            token->quantifier.min = 0;
+            token->quantifier.max = -1;
+            break;
         case '(':
+            in_capture_group = true;
             token = cre_add_token(parent);
             token->type = CRE_TOKEN_CAPTURE_GROUP;
             token->list.count = 0;
@@ -170,9 +212,11 @@ cre_re_t * cre_compile(const char * regex) {
             parent = token;
             break;
         case ')':
+            in_capture_group = false;
             parent = parent->list.parent;
             break;
         case '[':
+            in_alternator = true;
             token = cre_add_token(parent);
             token->type = CRE_TOKEN_ALTERNATOR;
             token->list.count = 0;
@@ -181,7 +225,18 @@ cre_re_t * cre_compile(const char * regex) {
             parent = token;
             break;
         case ']':
+            in_capture_group = false;
             parent = parent->list.parent;
+            break;
+        case '{':
+            in_quantifier = true;
+            token = cre_add_token(parent);
+            token->type = CRE_TOKEN_QUANTIFIER;
+            token->quantifier.min = -1;
+            token->quantifier.max = -1;
+            if (sscanf(regex + i + 1, "%d,%d}", &(token->quantifier.min), &(token->quantifier.max)) < 2) {
+                token->quantifier.max = token->quantifier.min;
+            }
             break;
         default:
             token = cre_add_token(parent);
@@ -213,6 +268,10 @@ void cre_free(cre_re_t * re) {
 }
 
 void print_indent(int depth, bool first) {
+    if (depth == 0) {
+        return;
+    }
+    
     for (int i = 0; i < depth - 1; ++i) {
         printf("|  ");
     }
@@ -255,6 +314,14 @@ void cre_token_print(cre_token_t * token, int depth) {
         case CRE_SPECIAL_WHITESPACE:
             printf("whitespace\n");
         }
+        break;
+    case CRE_TOKEN_RANGE:
+        print_indent(depth, true);
+        printf("type: range\n");
+        print_indent(depth, false);
+        printf("min: %c\n", token->range.min);
+        print_indent(depth, false);
+        printf("max: %c\n", token->range.max);
         break;
     case CRE_TOKEN_LIST:
         print_indent(depth, true);
